@@ -951,14 +951,15 @@ select option:checked,
 
 .item-composer-grid {
   display: grid;
-  grid-template-columns: 1fr 90px 140px 42px;
-  grid-template-areas: "desc qtd preco trash";
+  grid-template-columns: 1fr 80px 125px 135px 42px;
+  grid-template-areas: "desc qtd custo preco trash";
   gap: 12px;
   align-items: flex-end;
 }
 
 .grid-desc { grid-area: desc; }
 .grid-qtd { grid-area: qtd; }
+.grid-custo { grid-area: custo; }
 .grid-preco { grid-area: preco; }
 .grid-trash { grid-area: trash; }
 
@@ -1212,12 +1213,12 @@ select option:checked,
 
 /* Tablet & Mobile Médio (<= 768px) */
 @media (max-width: 768px) {
-  /* REQUISITO CRÍTICO: Item Composer com linhas quebradas e campo de quantidade compacto (85px) */
+  /* REQUISITO CRÍTICO: Item Composer com linhas quebradas para acomodar Custo e Venda */
   .item-composer-grid {
-    grid-template-columns: 85px 1fr 42px;
+    grid-template-columns: 75px 1fr 1fr 42px;
     grid-template-areas:
-      "desc desc trash"
-      "qtd preco preco";
+      "desc desc desc trash"
+      "qtd custo preco preco";
     gap: 10px;
   }
 

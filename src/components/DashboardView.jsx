@@ -282,7 +282,7 @@ Conseguem nos confirmar se as peças já estão prontas para coleta? Obrigado!`;
       </div>
 
       {/* Grid de KPIs do Período */}
-      <div className="kpi-grid">
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
         {/* KPI 1: Faturamento do Período */}
         <div className="kpi-card">
           <div>
@@ -297,7 +297,39 @@ Conseguem nos confirmar se as peças já estão prontas para coleta? Obrigado!`;
           </div>
         </div>
 
-        {/* KPI 2: Ticket Médio do Período */}
+        {/* KPI 2: Custo Total de Produção */}
+        <div className="kpi-card">
+          <div>
+            <div className="kpi-label">Custo de Produção</div>
+            <div className="kpi-value" style={{ color: '#cbd5e1' }}>
+              {formatMoney(kpis?.custo_periodo ?? kpis?.custo_mes ?? 0)}
+            </div>
+            <div className="kpi-subtext">
+              Peças, confecção e oficinas
+            </div>
+          </div>
+          <div className="kpi-icon-wrapper" style={{ color: '#94a3b8', borderColor: 'rgba(148, 163, 184, 0.3)', background: 'rgba(148, 163, 184, 0.1)' }}>
+            <CreditCard size={22} />
+          </div>
+        </div>
+
+        {/* KPI 3: Lucro Líquido Real & Margem */}
+        <div className="kpi-card" style={{ borderColor: 'rgba(52, 211, 153, 0.35)', background: 'linear-gradient(145deg, rgba(23, 32, 51, 0.8) 0%, rgba(6, 78, 59, 0.25) 100%)' }}>
+          <div>
+            <div className="kpi-label" style={{ color: '#6ee7b7' }}>Lucro Líquido Real</div>
+            <div className="kpi-value" style={{ color: '#34d399' }}>
+              {formatMoney(kpis?.lucro_periodo ?? kpis?.lucro_mes ?? 0)}
+            </div>
+            <div className="kpi-subtext" style={{ color: '#a7f3d0', fontWeight: 600 }}>
+              📈 {(kpis?.margem_periodo ?? kpis?.margem_mes ?? 0)}% de margem líquida
+            </div>
+          </div>
+          <div className="kpi-icon-wrapper" style={{ color: '#34d399', borderColor: 'rgba(52, 211, 153, 0.4)', background: 'rgba(52, 211, 153, 0.18)' }}>
+            <TrendingUp size={22} />
+          </div>
+        </div>
+
+        {/* KPI 4: Ticket Médio do Período */}
         <div className="kpi-card">
           <div>
             <div className="kpi-label">Ticket Médio</div>
@@ -307,25 +339,25 @@ Conseguem nos confirmar se as peças já estão prontas para coleta? Obrigado!`;
             </div>
           </div>
           <div className="kpi-icon-wrapper" style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)', background: 'rgba(56, 189, 248, 0.12)' }}>
-            <TrendingUp size={22} />
+            <DollarSign size={22} />
           </div>
         </div>
 
-        {/* KPI 3: Peças no Fornecedor */}
+        {/* KPI 5: Peças no Fornecedor */}
         <div className="kpi-card">
           <div>
             <div className="kpi-label">Peças em Oficinas</div>
             <div className="kpi-value">{kpis?.pecas_no_fornecedor || 0}</div>
             <div className="kpi-subtext">
-              Em produção externa de bordado
+              Em confecção ou bordado externo
             </div>
           </div>
-          <div className="kpi-icon-wrapper" style={{ color: '#34d399', borderColor: 'rgba(52, 211, 153, 0.3)', background: 'rgba(52, 211, 153, 0.12)' }}>
+          <div className="kpi-icon-wrapper" style={{ color: '#a78bfa', borderColor: 'rgba(167, 139, 250, 0.3)', background: 'rgba(167, 139, 250, 0.12)' }}>
             <Scissors size={22} />
           </div>
         </div>
 
-        {/* KPI 4: Alertas em Atraso */}
+        {/* KPI 6: Alertas em Atraso */}
         <div className={`kpi-card ${kpis?.bordados_atrasados > 0 ? 'alert-card' : ''}`}>
           <div>
             <div className="kpi-label" style={{ color: kpis?.bordados_atrasados > 0 ? 'var(--danger-text)' : undefined }}>
@@ -355,7 +387,7 @@ Conseguem nos confirmar se as peças já estão prontas para coleta? Obrigado!`;
           <div>
             <div className="card-header" style={{ marginBottom: '14px' }}>
               <div className="card-title">
-                <BarChart3 size={18} color="var(--accent-gold)" /> Evolução do Faturamento por Data
+                <BarChart3 size={18} color="var(--accent-gold)" /> Evolução do Faturamento & Lucro
               </div>
               <span className="badge badge-info" style={{ fontSize: '0.72rem' }}>
                 {evolucaoData.length} {evolucaoData.length === 1 ? 'dia com vendas' : 'dias com vendas'}
@@ -390,23 +422,35 @@ Conseguem nos confirmar se as peças já estão prontas para coleta? Obrigado!`;
                         onMouseEnter={() => setHoveredBar(idx)}
                         onMouseLeave={() => setHoveredBar(null)}
                       >
-                        {/* Tooltip no Hover */}
+                        {/* Tooltip no Hover com Faturamento, Custo e Lucro */}
                         {isHovered && (
                           <div style={{
                             position: 'absolute',
                             bottom: `calc(${alturaPct}% + 12px)`,
                             background: '#0f172a',
                             border: '1px solid var(--accent-gold)',
-                            borderRadius: '6px',
-                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            padding: '8px 12px',
                             fontSize: '0.75rem',
                             whiteSpace: 'nowrap',
-                            boxShadow: '0 8px 24px rgba(0,0,0,0.7)',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.8)',
                             zIndex: 20,
                             pointerEvents: 'none'
                           }}>
-                            <div style={{ color: '#fff', fontWeight: 700 }}>{formatMoney(item.total)}</div>
-                            <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                            <div style={{ color: '#fff', fontWeight: 700 }}>
+                              Faturamento: {formatMoney(item.total)}
+                            </div>
+                            {item.custo !== undefined && (
+                              <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>
+                                Custo de Produção: {formatMoney(item.custo)}
+                              </div>
+                            )}
+                            {item.lucro !== undefined && (
+                              <div style={{ color: item.lucro >= 0 ? '#34d399' : '#f87171', fontWeight: 700, fontSize: '0.74rem' }}>
+                                Lucro Líquido: {formatMoney(item.lucro)}
+                              </div>
+                            )}
+                            <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '3px' }}>
                               {item.pedidos} {item.pedidos === 1 ? 'pedido' : 'pedidos'} em {formatDate(item.data)}
                             </div>
                           </div>

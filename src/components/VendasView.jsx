@@ -279,6 +279,11 @@ export default function VendasView({ onOpenNovaVenda }) {
                         <strong style={{ color: '#fff', fontSize: '0.95rem' }}>
                           {formatMoney(v.total_venda)}
                         </strong>
+                        {v.lucro_total > 0 && (
+                          <div style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 600, marginTop: '2px' }}>
+                            Lucro: {formatMoney(v.lucro_total)}
+                          </div>
+                        )}
                       </td>
                       <td>
                         {/* Seletor Rápido de Status (RF012) */}

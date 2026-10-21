@@ -146,7 +146,7 @@ app.get('/api/produtos', (req, res) => {
 });
 
 app.post('/api/produtos', (req, res) => {
-  const { nome, categoria, preco_sugerido, descricao } = req.body;
+  const { nome, categoria, preco_sugerido, preco_custo, descricao } = req.body;
   if (!nome || !nome.trim()) {
     return res.status(400).json({ error: 'O nome da peça é obrigatório.' });
   }
@@ -158,12 +158,13 @@ app.post('/api/produtos', (req, res) => {
     }
 
     const result = db.prepare(`
-      INSERT INTO produtos_base (nome, categoria, preco_sugerido, descricao)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO produtos_base (nome, categoria, preco_sugerido, preco_custo, descricao)
+      VALUES (?, ?, ?, ?, ?)
     `).run(
       nome.trim(),
       categoria?.trim() || null,
       Number(preco_sugerido) || 0,
+      Number(preco_custo) || 0,
       descricao?.trim() || ''
     );
     res.status(201).json(db.prepare('SELECT * FROM produtos_base WHERE id = ?').get(result.lastInsertRowid));
@@ -173,7 +174,7 @@ app.post('/api/produtos', (req, res) => {
 });
 
 app.put('/api/produtos/:id', (req, res) => {
-  const { nome, categoria, preco_sugerido, descricao } = req.body;
+  const { nome, categoria, preco_sugerido, preco_custo, descricao } = req.body;
   if (!nome || !nome.trim()) {
     return res.status(400).json({ error: 'O nome da peça é obrigatório.' });
   }
@@ -181,12 +182,13 @@ app.put('/api/produtos/:id', (req, res) => {
   try {
     db.prepare(`
       UPDATE produtos_base
-      SET nome = ?, categoria = ?, preco_sugerido = ?, descricao = ?
+      SET nome = ?, categoria = ?, preco_sugerido = ?, preco_custo = ?, descricao = ?
       WHERE id = ?
     `).run(
       nome.trim(),
       categoria?.trim() || null,
       Number(preco_sugerido) || 0,
+      Number(preco_custo) || 0,
       descricao?.trim() || '',
       req.params.id
     );
@@ -316,15 +318,25 @@ app.post('/api/orcamentos', (req, res) => {
   }
 
   // RN002: Formação de preço = (preco_unitario + preco_bord_cliente) * quantidade
+  // Custo = (preco_custo + custo_bordado) * quantidade
   let totalGeral = 0;
+  let totalCusto = 0;
   itens.forEach(item => {
     const qty = Number(item.quantidade) || 1;
     const preco = Number(item.preco_unitario) || 0;
+    const custo = Number(item.preco_custo) || Number(item.custo_produto_fornecedor) || 0;
     const bordadoAdic = item.tem_bordado ? (Number(item.preco_bord_cliente) || 0) : 0;
+    const custoBordado = item.tem_bordado ? (Number(item.custo_bordado) || 0) : 0;
+
     const subtotal = (preco + bordadoAdic) * qty;
+    const custoSubtotal = (custo + custoBordado) * qty;
+
     item.subtotal = subtotal;
+    item.custo_subtotal = custoSubtotal;
     totalGeral += subtotal;
+    totalCusto += custoSubtotal;
   });
+  const totalLucro = totalGeral - totalCusto;
 
   const transaction = db.transaction(() => {
     // RN001: Snapshot do endereço e dados do cliente no momento da criação
@@ -332,8 +344,9 @@ app.post('/api/orcamentos', (req, res) => {
       INSERT INTO orcamentos (
         cliente_id, cliente_nome_snap, cliente_whatsapp_snap, cliente_endereco_snap,
         cliente_doc_snap, cliente_instagram_snap, data_criacao, validade_dias,
-        forma_pagamento, condicoes_pagamento_json, previsao_entrega, status, total_geral, observacoes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        forma_pagamento, condicoes_pagamento_json, previsao_entrega, status, total_geral,
+        custo_total, lucro_total, observacoes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = orcStmt.run(
@@ -350,6 +363,8 @@ app.post('/api/orcamentos', (req, res) => {
       previsao_entrega || null,
       'Pendente',
       totalGeral,
+      totalCusto,
+      totalLucro,
       observacoes || ''
     );
 
@@ -360,8 +375,9 @@ app.post('/api/orcamentos', (req, res) => {
         orcamento_id, produto_nome, quantidade, preco_unitario, tem_bordado,
         bordado_detalhe, fornecedor_id, custo_bordado, preco_bord_cliente, subtotal,
         previsao_retorno_bordado, oficina_produto_id, tem_prazo_produto,
-        previsao_retorno_produto, custo_produto_fornecedor, tem_prazo_bordado
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        previsao_retorno_produto, custo_produto_fornecedor, tem_prazo_bordado,
+        preco_custo, tipo_item
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const item of itens) {
@@ -381,7 +397,9 @@ app.post('/api/orcamentos', (req, res) => {
         item.tem_prazo_produto ? 1 : 0,
         item.tem_prazo_produto ? (item.previsao_retorno_produto || null) : null,
         Number(item.custo_produto_fornecedor) || 0,
-        item.tem_prazo_bordado !== false ? 1 : 0
+        item.tem_prazo_bordado !== false ? 1 : 0,
+        Number(item.preco_custo) || Number(item.custo_produto_fornecedor) || 0,
+        item.tipo_item || 'sob_encomenda'
       );
 
       // Auto-aprendizado do Catálogo: se a peça for nova, registra automaticamente em produtos_base
@@ -440,8 +458,8 @@ app.post('/api/orcamentos/:id/converter', (req, res) => {
       INSERT INTO vendas (
         orcamento_id, cliente_id, cliente_nome_snap, cliente_whatsapp_snap,
         cliente_endereco_snap, cliente_doc_snap, data_venda, previsao_entrega,
-        status_producao, total_venda, forma_pagamento, condicoes_pagamento_json, observacoes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status_producao, total_venda, custo_total, lucro_total, forma_pagamento, condicoes_pagamento_json, observacoes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const vResult = vendaStmt.run(
@@ -455,6 +473,8 @@ app.post('/api/orcamentos/:id/converter', (req, res) => {
       orcamento.previsao_entrega,
       initialStatus,
       orcamento.total_geral,
+      orcamento.custo_total || 0,
+      orcamento.lucro_total || (orcamento.total_geral - (orcamento.custo_total || 0)),
       orcamento.forma_pagamento,
       orcamento.condicoes_pagamento_json || null,
       orcamento.observacoes ? `[Convertido de Orçamento #${orcamento.id}] ${orcamento.observacoes}` : `[Convertido de Orçamento #${orcamento.id}]`
@@ -468,8 +488,9 @@ app.post('/api/orcamentos/:id/converter', (req, res) => {
         venda_id, produto_nome, quantidade, preco_unitario, tem_bordado,
         bordado_detalhe, fornecedor_id, custo_bordado, preco_bord_cliente, subtotal,
         previsao_retorno_bordado, oficina_produto_id, tem_prazo_produto,
-        previsao_retorno_produto, custo_produto_fornecedor, tem_prazo_bordado
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        previsao_retorno_produto, custo_produto_fornecedor, tem_prazo_bordado,
+        preco_custo, tipo_item
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const osStmt = db.prepare(`
@@ -499,7 +520,9 @@ app.post('/api/orcamentos/:id/converter', (req, res) => {
         item.tem_prazo_produto ? 1 : 0,
         item.previsao_retorno_produto || null,
         item.custo_produto_fornecedor || 0,
-        item.tem_prazo_bordado !== 0 ? 1 : 0
+        item.tem_prazo_bordado !== 0 ? 1 : 0,
+        item.preco_custo || item.custo_produto_fornecedor || 0,
+        item.tipo_item || 'sob_encomenda'
       );
 
       // A) Se o produto é confeccionado por oficina parceira -> Gera OS de Fabricação na Esteira
@@ -638,14 +661,23 @@ app.post('/api/vendas', (req, res) => {
   }
 
   let totalVenda = 0;
+  let totalCusto = 0;
   itens.forEach(item => {
     const qty = Number(item.quantidade) || 1;
     const preco = Number(item.preco_unitario) || 0;
+    const custo = Number(item.preco_custo) || Number(item.custo_produto_fornecedor) || 0;
     const bordadoAdic = item.tem_bordado ? (Number(item.preco_bord_cliente) || 0) : 0;
+    const custoBordado = item.tem_bordado ? (Number(item.custo_bordado) || 0) : 0;
+
     const subtotal = (preco + bordadoAdic) * qty;
+    const custoSubtotal = (custo + custoBordado) * qty;
+
     item.subtotal = subtotal;
+    item.custo_subtotal = custoSubtotal;
     totalVenda += subtotal;
+    totalCusto += custoSubtotal;
   });
+  const totalLucro = totalVenda - totalCusto;
 
   const hasTerceirizado = itens.some(i => i.tem_bordado || i.oficina_produto_id);
   const initialStatus = hasTerceirizado ? 'Em Produção' : 'Em Produção';
@@ -655,8 +687,8 @@ app.post('/api/vendas', (req, res) => {
       INSERT INTO vendas (
         orcamento_id, cliente_id, cliente_nome_snap, cliente_whatsapp_snap,
         cliente_endereco_snap, cliente_doc_snap, data_venda, previsao_entrega,
-        status_producao, total_venda, forma_pagamento, condicoes_pagamento_json, observacoes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status_producao, total_venda, custo_total, lucro_total, forma_pagamento, condicoes_pagamento_json, observacoes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = vStmt.run(
@@ -670,6 +702,8 @@ app.post('/api/vendas', (req, res) => {
       previsao_entrega || null,
       initialStatus,
       totalVenda,
+      totalCusto,
+      totalLucro,
       forma_pagamento || 'Pix à vista',
       condicoes_pagamento_json ? (typeof condicoes_pagamento_json === 'string' ? condicoes_pagamento_json : JSON.stringify(condicoes_pagamento_json)) : null,
       observacoes || ''
@@ -682,8 +716,9 @@ app.post('/api/vendas', (req, res) => {
         venda_id, produto_nome, quantidade, preco_unitario, tem_bordado,
         bordado_detalhe, fornecedor_id, custo_bordado, preco_bord_cliente, subtotal,
         previsao_retorno_bordado, oficina_produto_id, tem_prazo_produto,
-        previsao_retorno_produto, custo_produto_fornecedor, tem_prazo_bordado
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        previsao_retorno_produto, custo_produto_fornecedor, tem_prazo_bordado,
+        preco_custo, tipo_item
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const osStmt = db.prepare(`
@@ -713,7 +748,9 @@ app.post('/api/vendas', (req, res) => {
         item.tem_prazo_produto ? 1 : 0,
         item.tem_prazo_produto ? (item.previsao_retorno_produto || null) : null,
         Number(item.custo_produto_fornecedor) || 0,
-        item.tem_prazo_bordado !== false ? 1 : 0
+        item.tem_prazo_bordado !== false ? 1 : 0,
+        Number(item.preco_custo) || Number(item.custo_produto_fornecedor) || 0,
+        item.tipo_item || 'sob_encomenda'
       );
 
       // A) Se o produto é confeccionado por oficina parceira -> Gera OS de Fabricação na Esteira
@@ -938,25 +975,49 @@ app.get('/api/dashboard', (req, res) => {
     paramsVendas.push(data_fim);
   }
 
-  // Faturamento e pedidos do período filtrado
+  // Faturamento, Custo e Lucro do período filtrado
   const faturamentoPeriodo = db.prepare(`
-    SELECT COALESCE(SUM(total_venda), 0) as total, COUNT(id) as total_pedidos
+    SELECT 
+      COALESCE(SUM(total_venda), 0) as total,
+      COALESCE(SUM(custo_total), 0) as custo,
+      COALESCE(SUM(lucro_total), 0) as lucro,
+      COUNT(id) as total_pedidos
     FROM vendas
     ${whereVendas}
   `).get(...paramsVendas);
 
-  // Faturamento total geral acumulado
+  // Faturamento, Custo e Lucro total geral acumulado
   const faturamentoTotal = db.prepare(`
-    SELECT COALESCE(SUM(total_venda), 0) as total, COUNT(id) as total_pedidos
+    SELECT 
+      COALESCE(SUM(total_venda), 0) as total,
+      COALESCE(SUM(custo_total), 0) as custo,
+      COALESCE(SUM(lucro_total), 0) as lucro,
+      COUNT(id) as total_pedidos
     FROM vendas
   `).get();
 
-  // Faturamento do mês atual
+  // Faturamento, Custo e Lucro do mês atual
   const faturamentoMes = db.prepare(`
-    SELECT COALESCE(SUM(total_venda), 0) as total, COUNT(id) as total_pedidos
+    SELECT 
+      COALESCE(SUM(total_venda), 0) as total,
+      COALESCE(SUM(custo_total), 0) as custo,
+      COALESCE(SUM(lucro_total), 0) as lucro,
+      COUNT(id) as total_pedidos
     FROM vendas
     WHERE strftime('%Y-%m', data_venda) = strftime('%Y-%m', date('now', 'localtime'))
   `).get();
+
+  const margemPeriodo = faturamentoPeriodo.total > 0
+    ? ((faturamentoPeriodo.lucro / faturamentoPeriodo.total) * 100).toFixed(1)
+    : 0;
+
+  const margemMes = faturamentoMes.total > 0
+    ? ((faturamentoMes.lucro / faturamentoMes.total) * 100).toFixed(1)
+    : 0;
+
+  const margemTotal = faturamentoTotal.total > 0
+    ? ((faturamentoTotal.lucro / faturamentoTotal.total) * 100).toFixed(1)
+    : 0;
 
   // Orçamentos e taxa de conversão
   let whereOrc = '';
@@ -1012,9 +1073,14 @@ app.get('/api/dashboard', (req, res) => {
   `).all();
 
   // Gráficos:
-  // 1. Evolução diária de faturamento no período
+  // 1. Evolução diária de faturamento, custo e lucro no período
   const evolucaoFaturamento = db.prepare(`
-    SELECT date(data_venda) as data, COALESCE(SUM(total_venda), 0) as total, COUNT(id) as pedidos
+    SELECT 
+      date(data_venda) as data, 
+      COALESCE(SUM(total_venda), 0) as total, 
+      COALESCE(SUM(custo_total), 0) as custo,
+      COALESCE(SUM(lucro_total), 0) as lucro,
+      COUNT(id) as pedidos
     FROM vendas
     ${whereVendas}
     GROUP BY date(data_venda)
@@ -1072,10 +1138,19 @@ app.get('/api/dashboard', (req, res) => {
   res.json({
     kpis: {
       faturamento_periodo: faturamentoPeriodo.total,
+      custo_periodo: faturamentoPeriodo.custo,
+      lucro_periodo: faturamentoPeriodo.lucro,
+      margem_periodo: Number(margemPeriodo),
       pedidos_periodo: faturamentoPeriodo.total_pedidos,
       faturamento_mes: faturamentoMes.total,
+      custo_mes: faturamentoMes.custo,
+      lucro_mes: faturamentoMes.lucro,
+      margem_mes: Number(margemMes),
       pedidos_mes: faturamentoMes.total_pedidos,
       faturamento_total: faturamentoTotal.total,
+      custo_total: faturamentoTotal.custo,
+      lucro_total: faturamentoTotal.lucro,
+      margem_total: Number(margemTotal),
       pedidos_total: faturamentoTotal.total_pedidos,
       ticket_medio: faturamentoPeriodo.total_pedidos > 0 ? (faturamentoPeriodo.total / faturamentoPeriodo.total_pedidos).toFixed(2) : 0,
       orcamentos_ativos: totalOrcamentos - orcamentosAprovados,

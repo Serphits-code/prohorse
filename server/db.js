@@ -158,6 +158,19 @@ function initDb() {
   try { db.exec(`ALTER TABLE ordens_bordado ADD COLUMN tipo_servico TEXT DEFAULT 'Bordado';`); } catch (e) {}
   try { db.exec(`ALTER TABLE ordens_bordado ADD COLUMN tem_prazo INTEGER DEFAULT 1;`); } catch (e) {}
 
+  // Migrações seguras para Custo e Lucro (Preço de Custo vs Preço de Venda)
+  try { db.exec(`ALTER TABLE orcamentos ADD COLUMN custo_total REAL DEFAULT 0;`); } catch (e) {}
+  try { db.exec(`ALTER TABLE orcamentos ADD COLUMN lucro_total REAL DEFAULT 0;`); } catch (e) {}
+  try { db.exec(`ALTER TABLE vendas ADD COLUMN custo_total REAL DEFAULT 0;`); } catch (e) {}
+  try { db.exec(`ALTER TABLE vendas ADD COLUMN lucro_total REAL DEFAULT 0;`); } catch (e) {}
+
+  try { db.exec(`ALTER TABLE itens_orcamento ADD COLUMN preco_custo REAL DEFAULT 0;`); } catch (e) {}
+  try { db.exec(`ALTER TABLE itens_orcamento ADD COLUMN tipo_item TEXT DEFAULT 'sob_encomenda';`); } catch (e) {}
+  try { db.exec(`ALTER TABLE itens_venda ADD COLUMN preco_custo REAL DEFAULT 0;`); } catch (e) {}
+  try { db.exec(`ALTER TABLE itens_venda ADD COLUMN tipo_item TEXT DEFAULT 'sob_encomenda';`); } catch (e) {}
+
+  try { db.exec(`ALTER TABLE produtos_base ADD COLUMN preco_custo REAL DEFAULT 0;`); } catch (e) {}
+
   // Seed default data if empty
   seedData();
 }

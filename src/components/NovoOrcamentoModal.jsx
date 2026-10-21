@@ -47,11 +47,13 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
     }
   ]);
 
-  // Itens Dinâmicos com Atribuição de Oficina do Produto + Bordado
+  // Itens Dinâmicos com Atribuição de Oficina do Produto + Bordado + Custo e Venda
   const [itens, setItens] = useState([
     {
       produto_nome: '',
+      tipo_item: 'sob_encomenda', // 'sob_encomenda' | 'estoque'
       quantidade: 1,
+      preco_custo: 0,
       preco_unitario: 0,
       oficina_produto_id: '', // '' = Produção Própria / Interno
       tem_prazo_produto: false,
@@ -64,7 +66,10 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
       previsao_retorno_bordado: '',
       custo_bordado: 0,
       preco_bord_cliente: 0,
-      subtotal: 0
+      subtotal: 0,
+      custo_subtotal: 0,
+      lucro_item: 0,
+      margem_item: 0
     }
   ]);
 
@@ -140,7 +145,9 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
       ...itens,
       {
         produto_nome: '',
+        tipo_item: 'sob_encomenda',
         quantidade: 1,
+        preco_custo: 0,
         preco_unitario: 0,
         oficina_produto_id: '',
         tem_prazo_produto: false,
@@ -153,7 +160,10 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
         previsao_retorno_bordado: '',
         custo_bordado: 0,
         preco_bord_cliente: 0,
-        subtotal: 0
+        subtotal: 0,
+        custo_subtotal: 0,
+        lucro_item: 0,
+        margem_item: 0
       }
     ]);
   };
@@ -164,16 +174,28 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
     setItens(itens.filter((_, i) => i !== idx));
   };
 
-  // Atualizar campo do item e recalcular subtotal (RN002)
+  // Atualizar campo do item e recalcular subtotal, custo e lucro (RN002)
   const updateItem = (index, field, value) => {
     const novos = [...itens];
     novos[index][field] = value;
 
-    // RN002: Valor Total = (Preço Base + Adicional Bordado) * Quantidade
+    // Sincroniza custo se alterar custo de oficina parceira
+    if (field === 'custo_produto_fornecedor' && Number(value) > 0) {
+      novos[index].preco_custo = value;
+    } else if (field === 'preco_custo' && Number(value) > 0 && novos[index].oficina_produto_id) {
+      novos[index].custo_produto_fornecedor = value;
+    }
+
     const qty = Number(novos[index].quantidade) || 1;
-    const preco = Number(novos[index].preco_unitario) || 0;
-    const bordadoAdic = novos[index].tem_bordado ? (Number(novos[index].preco_bord_cliente) || 0) : 0;
-    novos[index].subtotal = (preco + bordadoAdic) * qty;
+    const precoVenda = Number(novos[index].preco_unitario) || 0;
+    const precoCusto = Number(novos[index].preco_custo) || 0;
+    const bordadoVenda = novos[index].tem_bordado ? (Number(novos[index].preco_bord_cliente) || 0) : 0;
+    const bordadoCusto = novos[index].tem_bordado ? (Number(novos[index].custo_bordado) || 0) : 0;
+
+    novos[index].subtotal = (precoVenda + bordadoVenda) * qty;
+    novos[index].custo_subtotal = (precoCusto + bordadoCusto) * qty;
+    novos[index].lucro_item = novos[index].subtotal - novos[index].custo_subtotal;
+    novos[index].margem_item = novos[index].subtotal > 0 ? (novos[index].lucro_item / novos[index].subtotal) * 100 : 0;
 
     setItens(novos);
   };
@@ -182,12 +204,21 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
   const selecionarProdutoCatalogo = (index, produto) => {
     const novos = [...itens];
     novos[index].produto_nome = produto.nome;
-    novos[index].preco_unitario = produto.preco_sugerido;
+    novos[index].preco_unitario = produto.preco_sugerido || 0;
+    if (produto.preco_custo !== undefined && produto.preco_custo !== null) {
+      novos[index].preco_custo = produto.preco_custo;
+    }
 
     const qty = Number(novos[index].quantidade) || 1;
-    const preco = Number(produto.preco_sugerido) || 0;
-    const bordadoAdic = novos[index].tem_bordado ? (Number(novos[index].preco_bord_cliente) || 0) : 0;
-    novos[index].subtotal = (preco + bordadoAdic) * qty;
+    const precoVenda = Number(novos[index].preco_unitario) || 0;
+    const precoCusto = Number(novos[index].preco_custo) || 0;
+    const bordadoVenda = novos[index].tem_bordado ? (Number(novos[index].preco_bord_cliente) || 0) : 0;
+    const bordadoCusto = novos[index].tem_bordado ? (Number(novos[index].custo_bordado) || 0) : 0;
+
+    novos[index].subtotal = (precoVenda + bordadoVenda) * qty;
+    novos[index].custo_subtotal = (precoCusto + bordadoCusto) * qty;
+    novos[index].lucro_item = novos[index].subtotal - novos[index].custo_subtotal;
+    novos[index].margem_item = novos[index].subtotal > 0 ? (novos[index].lucro_item / novos[index].subtotal) * 100 : 0;
 
     setItens(novos);
     setDropdownItemIdx(null);
@@ -198,8 +229,11 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
     return Number(val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
-  // Total Geral
+  // Total Geral, Custo Geral e Lucro Geral
   const totalGeral = itens.reduce((acc, curr) => acc + (curr.subtotal || 0), 0);
+  const totalCustoGeral = itens.reduce((acc, curr) => acc + (curr.custo_subtotal || 0), 0);
+  const totalLucroGeral = totalGeral - totalCustoGeral;
+  const margemLucroGeral = totalGeral > 0 ? (totalLucroGeral / totalGeral) * 100 : 0;
 
   // Gestão de Multi-Pagamentos
   const somaPagamentos = condicoesPagamento.reduce((acc, curr) => acc + (Number(curr.valor) || 0), 0);
@@ -592,7 +626,76 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 {itens.map((item, idx) => (
                   <div key={idx} className="item-composer-card">
-                    {/* Linha de Composição com Autocomplete do Catálogo */}
+                    {/* Header do Card com Número e Seletor Sob Encomenda / Estoque */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px',
+                      flexWrap: 'wrap',
+                      gap: '10px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#fff', letterSpacing: '0.04em' }}>
+                          ITEM #{idx + 1}
+                        </span>
+                        {item.tipo_item === 'estoque' ? (
+                          <span className="badge badge-info" style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            📦 Produto do Estoque
+                          </span>
+                        ) : (
+                          <span className="badge badge-warning" style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            🪡 Sob Encomenda (Produção)
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Toggle Pills: Sob Encomenda vs Produto do Estoque */}
+                      <div style={{
+                        display: 'inline-flex',
+                        background: 'rgba(0, 0, 0, 0.4)',
+                        padding: '3px',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)'
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => updateItem(idx, 'tipo_item', 'sob_encomenda')}
+                          style={{
+                            padding: '5px 12px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            borderRadius: 'var(--radius-sm)',
+                            border: 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            background: item.tipo_item !== 'estoque' ? '#2563eb' : 'transparent',
+                            color: item.tipo_item !== 'estoque' ? '#ffffff' : 'var(--text-muted)'
+                          }}
+                        >
+                          🪡 Sob Encomenda
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateItem(idx, 'tipo_item', 'estoque')}
+                          style={{
+                            padding: '5px 12px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            borderRadius: 'var(--radius-sm)',
+                            border: 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            background: item.tipo_item === 'estoque' ? '#2563eb' : 'transparent',
+                            color: item.tipo_item === 'estoque' ? '#ffffff' : 'var(--text-muted)'
+                          }}
+                        >
+                          📦 Produto do Estoque
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Linha de Composição: Nome, Qtd, Preço de Custo, Preço de Venda */}
                     <div className="item-composer-grid">
                       {/* Nome / Peça */}
                       <div className="grid-desc" style={{ position: 'relative' }}>
@@ -613,7 +716,7 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
                             }
                           }}
                           onBlur={() => setTimeout(() => setDropdownItemIdx(null), 250)}
-                          placeholder="Digite a peça (ex: Sela Australiana, Manta, Cabeçada...)"
+                          placeholder="Digite a peça sob encomenda (ex: Sela Australiana, Manta, Cabeçada...)"
                           required
                           autoComplete="off"
                           style={{ padding: '8px 10px', fontSize: '0.85rem' }}
@@ -681,13 +784,20 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
                                         {p.nome}
                                       </div>
                                     </div>
-                                    <div style={{
-                                      fontWeight: 700,
-                                      fontSize: '0.82rem',
-                                      color: 'var(--accent-gold)',
-                                      whiteSpace: 'nowrap'
-                                    }}>
-                                      {formatMoney(p.preco_sugerido)}
+                                    <div style={{ textAlign: 'right' }}>
+                                      <div style={{
+                                        fontWeight: 700,
+                                        fontSize: '0.82rem',
+                                        color: 'var(--accent-gold)',
+                                        whiteSpace: 'nowrap'
+                                      }}>
+                                        Venda: {formatMoney(p.preco_sugerido)}
+                                      </div>
+                                      {Number(p.preco_custo) > 0 && (
+                                        <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                                          Custo: {formatMoney(p.preco_custo)}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 ))}
@@ -711,9 +821,28 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
                         />
                       </div>
 
-                      {/* Preço Unitário */}
+                      {/* Preço de Custo */}
+                      <div className="grid-custo">
+                        <label className="item-micro-label" style={{ color: '#94a3b8' }}>
+                          Preço de Custo (R$)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="form-input"
+                          value={item.preco_custo}
+                          onChange={(e) => updateItem(idx, 'preco_custo', e.target.value)}
+                          placeholder="0,00"
+                          style={{ padding: '8px 10px', fontSize: '0.85rem', textAlign: 'right', borderColor: 'rgba(148, 163, 184, 0.3)' }}
+                        />
+                      </div>
+
+                      {/* Preço da Venda */}
                       <div className="grid-preco">
-                        <label className="item-micro-label">Preço Base (R$)</label>
+                        <label className="item-micro-label" style={{ color: 'var(--accent-gold)', fontWeight: 700 }}>
+                          Preço da Venda (R$) *
+                        </label>
                         <input
                           type="number"
                           step="0.01"
@@ -721,7 +850,9 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
                           className="form-input"
                           value={item.preco_unitario}
                           onChange={(e) => updateItem(idx, 'preco_unitario', e.target.value)}
-                          style={{ padding: '8px 10px', fontSize: '0.85rem', textAlign: 'right' }}
+                          placeholder="0,00"
+                          style={{ padding: '8px 10px', fontSize: '0.85rem', textAlign: 'right', fontWeight: 700, borderColor: 'rgba(245, 158, 11, 0.4)' }}
+                          required
                         />
                       </div>
 
@@ -980,11 +1111,40 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
                         </div>
                       )}
 
-                      {/* Subtotal da linha */}
-                      <div style={{ textAlign: 'right', fontSize: '0.825rem', color: 'var(--text-muted)' }}>
-                        Subtotal do Item: <strong style={{ color: '#fff', fontSize: '0.95rem' }}>
-                          {item.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </strong>
+                      {/* Subtotal da linha e indicador de Lucratividade do Item */}
+                      <div style={{
+                        marginTop: '10px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '10px',
+                        padding: '9px 14px',
+                        background: 'rgba(15, 23, 42, 0.65)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid rgba(255, 255, 255, 0.06)',
+                        fontSize: '0.825rem'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                          <span style={{ color: '#94a3b8' }}>
+                            Custo Total: <strong style={{ color: '#cbd5e1' }}>{formatMoney(item.custo_subtotal || 0)}</strong>
+                          </span>
+                          <span style={{ color: (item.lucro_item >= 0 ? '#34d399' : '#f87171'), fontWeight: 600 }}>
+                            {item.lucro_item >= 0 ? '📈 Lucro Previsto: ' : '📉 Prejuízo: '}
+                            <strong>{formatMoney(item.lucro_item || 0)}</strong>
+                            {item.subtotal > 0 && (
+                              <span style={{ fontSize: '0.74rem', marginLeft: '5px', opacity: 0.9 }}>
+                                ({(item.margem_item || 0).toFixed(1)}% margem)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+
+                        <div>
+                          Subtotal Venda: <strong style={{ color: 'var(--accent-gold)', fontSize: '0.98rem' }}>
+                            {formatMoney(item.subtotal)}
+                          </strong>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1226,32 +1386,57 @@ export default function NovoOrcamentoModal({ onClose, onCreated, isVendaDireta =
               </div>
             </div>
 
-            {/* Totalizador Geral */}
+            {/* Totalizador Geral com Margem e Lucro */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: 'linear-gradient(90deg, rgba(217, 119, 6, 0.15) 0%, rgba(23, 32, 51, 0.8) 100%)',
+              background: 'linear-gradient(90deg, rgba(217, 119, 6, 0.15) 0%, rgba(23, 32, 51, 0.85) 100%)',
               border: '1px solid rgba(245, 158, 11, 0.3)',
               borderRadius: 'var(--radius-lg)',
-              padding: '16px 22px'
+              padding: '16px 22px',
+              flexWrap: 'wrap',
+              gap: '16px'
             }}>
               <div>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-                  Total Consolidado
+                  Consolidação Financeira & Lucratividade
                 </span>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                  {itens.length} {itens.length === 1 ? 'item composto' : 'itens compostos'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+                    Custo Total: <strong style={{ color: '#cbd5e1' }}>{formatMoney(totalCustoGeral)}</strong>
+                  </span>
+                  <span style={{ fontSize: '0.82rem', color: totalLucroGeral >= 0 ? '#34d399' : '#f87171', fontWeight: 700 }}>
+                    {totalLucroGeral >= 0 ? '💰 Lucro Previsto: ' : '⚠️ Prejuízo: '}
+                    <strong>{formatMoney(totalLucroGeral)}</strong>
+                    {totalGeral > 0 && (
+                      <span style={{
+                        fontSize: '0.72rem',
+                        marginLeft: '6px',
+                        padding: '2px 8px',
+                        borderRadius: 'var(--radius-full)',
+                        background: totalLucroGeral >= 0 ? 'rgba(52, 211, 153, 0.18)' : 'rgba(244, 63, 94, 0.18)',
+                        border: `1px solid ${totalLucroGeral >= 0 ? 'rgba(52, 211, 153, 0.35)' : 'rgba(244, 63, 94, 0.35)'}`
+                      }}>
+                        {margemLucroGeral.toFixed(1)}% margem
+                      </span>
+                    )}
+                  </span>
                 </div>
               </div>
 
-              <div style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '1.75rem',
-                fontWeight: 800,
-                color: 'var(--accent-gold)'
-              }}>
-                {totalGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Total do Pedido (Venda)
+                </span>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '1.75rem',
+                  fontWeight: 800,
+                  color: 'var(--accent-gold)'
+                }}>
+                  {formatMoney(totalGeral)}
+                </div>
               </div>
             </div>
           </div>

@@ -203,6 +203,11 @@ export default function OrcamentosView({ onOpenNovoOrcamento }) {
                         <strong style={{ color: '#fff', fontSize: '0.95rem' }}>
                           {formatMoney(orc.total_geral)}
                         </strong>
+                        {orc.lucro_total > 0 && (
+                          <div style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 600, marginTop: '2px' }}>
+                            Lucro: {formatMoney(orc.lucro_total)}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <span className={`badge ${isAprovado ? 'badge-success' : orc.status === 'Recusado' ? 'badge-danger' : 'badge-warning'}`}>

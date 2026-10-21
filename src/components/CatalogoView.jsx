@@ -13,6 +13,7 @@ export default function CatalogoView() {
   const [modalAberto, setModalAberto] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [formNome, setFormNome] = useState('');
+  const [formPrecoCusto, setFormPrecoCusto] = useState('');
   const [formPreco, setFormPreco] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
   const [salvando, setSalvando] = useState(false);
@@ -43,6 +44,7 @@ export default function CatalogoView() {
   const abrirNovo = () => {
     setEditandoId(null);
     setFormNome('');
+    setFormPrecoCusto('');
     setFormPreco('');
     setFormDescricao('');
     setModalAberto(true);
@@ -51,6 +53,7 @@ export default function CatalogoView() {
   const abrirEdicao = (prod) => {
     setEditandoId(prod.id);
     setFormNome(prod.nome);
+    setFormPrecoCusto(prod.preco_custo !== undefined && prod.preco_custo !== null ? prod.preco_custo : '');
     setFormPreco(prod.preco_sugerido || '');
     setFormDescricao(prod.descricao || '');
     setModalAberto(true);
@@ -73,6 +76,7 @@ export default function CatalogoView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nome: formNome.trim(),
+          preco_custo: parseFloat(formPrecoCusto) || 0,
           preco_sugerido: parseFloat(formPreco) || 0,
           descricao: formDescricao.trim()
         })
@@ -315,7 +319,7 @@ export default function CatalogoView() {
 
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-                      Preço Base
+                      Preço de Venda
                     </div>
                     <div style={{
                       fontFamily: 'var(--font-display)',
@@ -325,6 +329,16 @@ export default function CatalogoView() {
                     }}>
                       {formatMoney(p.preco_sugerido)}
                     </div>
+                    {Number(p.preco_custo) > 0 && (
+                      <div style={{ fontSize: '0.74rem', color: '#94a3b8', marginTop: '2px' }}>
+                        Custo: <strong style={{ color: '#cbd5e1' }}>{formatMoney(p.preco_custo)}</strong>
+                      </div>
+                    )}
+                    {Number(p.preco_sugerido) > Number(p.preco_custo || 0) && (
+                      <div style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 600, marginTop: '2px' }}>
+                        + Lucro {formatMoney(Number(p.preco_sugerido) - Number(p.preco_custo || 0))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -420,19 +434,68 @@ export default function CatalogoView() {
                   </span>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Preço Base Sugerido (R$) *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="form-input"
-                    value={formPreco}
-                    onChange={(e) => setFormPreco(e.target.value)}
-                    placeholder="0,00"
-                    required
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: '#cbd5e1' }}>Preço de Custo (R$)</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="form-input"
+                      value={formPrecoCusto}
+                      onChange={(e) => setFormPrecoCusto(e.target.value)}
+                      placeholder="0,00"
+                    />
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px' }}>
+                      Custo de fabricação/peça
+                    </span>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: 'var(--accent-gold)' }}>Preço da Venda (R$) *</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="form-input"
+                      value={formPreco}
+                      onChange={(e) => setFormPreco(e.target.value)}
+                      placeholder="0,00"
+                      required
+                    />
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px' }}>
+                      Valor cobrado do cliente
+                    </span>
+                  </div>
                 </div>
+
+                {/* Previsão de Lucro na peça */}
+                {(Number(formPreco) > 0 || Number(formPrecoCusto) > 0) && (
+                  <div style={{
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid rgba(255, 255, 255, 0.07)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.82rem'
+                  }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Margem estimada por unidade:</span>
+                    <strong style={{ color: Number(formPreco) - Number(formPrecoCusto) >= 0 ? '#34d399' : '#f87171' }}>
+                      {formatMoney(Number(formPreco || 0) - Number(formPrecoCusto || 0))}
+                      {Number(formPreco) > 0 && (
+                        <span style={{ fontSize: '0.75rem', opacity: 0.85, marginLeft: '6px' }}>
+                          ({(((Number(formPreco) - Number(formPrecoCusto || 0)) / Number(formPreco)) * 100).toFixed(1)}%)
+                        </span>
+                      )}
+                    </strong>
+                  </div>
+                )}
 
                 <div className="form-group">
                   <label className="form-label">Descrição / Especificação Técnica (Opcional)</label>
